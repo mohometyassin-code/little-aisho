@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Jumping Girl Game</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <style>
+    html, body { margin: 0; padding: 0; width: 100vw; height: 100vh; overflow: hidden;
+      background: linear-gradient(135deg, #e0f7fa 0%, #fce4ec 100%);}
+    #gameCanvas { display: block; margin: 0 auto; background: transparent; }
+    #lives {
+      position: absolute; top: 20px; left: 24px; z-index: 10; font-size: 2em;
+      letter-spacing: 0.3em; color: #ff69b4; text-shadow: 1px 1px 6px #fff;
+      user-select: none;
+    }
+    #message {
+      position: absolute; top: 24px; width: 100vw; text-align: center;
+      font-size: 2.1em; color: #7e57c2; font-family: 'Comic Sans MS', cursive;
+      z-index: 11; text-shadow: 1px 1px 8px #fff;
+      opacity: 0; transition: opacity 1s;
+      pointer-events:none;
+    }
+    #restartBtn {
+      position: absolute; left: 50%; top: 60%; transform: translate(-50%, -50%);
+      font-size: 1.3em; padding: 14px 36px; background: #ffb6c1; border: none; border-radius: 12px;
+      color: #fff; font-weight: bold; box-shadow: 0 1px 8px #999; cursor: pointer;
+      display: none; z-index: 20;
+    }
+  </style>
+</head>
+<body>
+  <div id="lives">❤️❤️❤️</div>
+  <div id="message"></div>
+  <button id="restartBtn" onclick="restartGame()">Restart</button>
+  <canvas id="gameCanvas" width="420" height="560"></canvas>
+  <script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const livesDiv = document.getElementById('lives');
+    const messageDiv = document.getElementById('message');
+    const restartBtn = document.getElementById('restartBtn');
+    let girl, rocks, state, hearts, jumpAnim, jumpTo, gameOverReason;
+    let winCount = 0;
+    let forceFallIndexes = [];
+
+    // Messages for win and fall
+    const winMsg = "I'm proud at you Jerry Dhicis 😂";
+    const fallMsg = "There is no cheese today Aisho Jerry";
+
+    function drawGirl(x, y, jumping=false) {
+      // Head (brown circle)
+      ctx.save();
+      ctx.translate(x, y);
+      // Shadow
+      if(jumping) {
+        ctx.globalAlpha = 0.3;
+        ctx.beginPath();
+        ctx.ellipse(0, 54, 22, 6, 0, 0, Math.PI*2);
+        ctx.fillStyle = "#000";
+        ctx.fill();
+        ctx.globalAlpha = 1;
+      }
+      // Body
+      ctx.beginPath();
+      ctx.arc(0, 0, 25, Math.PI, 0, false); // Hijab hood
+      ctx.lineTo(14, 28); ctx.lineTo(-14, 28);
+      ctx.closePath();
+      ctx.fillStyle = "#9575cd";
+      ctx.fill();
+      // Face
+      ctx.beginPath();
+      ctx.arc(0, 0, 17, 0, Math.PI*2);
+      ctx.fillStyle = "#9e724a";
+      ctx.fill();
+      // Hijab wrap (face edge)
+      ctx.beginPath();
+      ctx.arc(0, 0, 17, Math.PI*0.2, Math.PI*1.8);
+      ctx.lineWidth = 4;
+      ctx.strokeStyle = "#6a1b9a";
+      ctx.stroke();
+      // Eyes
+      ctx.beginPath();
+      ctx.arc(-6, -4, 2.4, 0, Math.PI*2);
+      ctx.arc( 6, -4, 2.4, 0, Math.PI*2);
+      ctx.fillStyle = "#222";
+      ctx.fill();
+      // Smile
+      ctx.beginPath();
+      ctx.arc(0, 2, 7, Math.PI*0.15, Math.PI*0.85);
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = "#5d4037";
+      ctx.stroke();
+      // Dress
+      ctx.beginPath();
+      ctx.moveTo(-12, 28);
+      ctx.lineTo(-20, 54);
+      ctx.lineTo(20, 54);
+      ctx.lineTo(12, 28);
+      ctx.closePath();
+      ctx.fillStyle = "#f06292";
+      ctx.fill();
+      // Arms
+      ctx.strokeStyle = "#9e724a";
+      ctx.lineWidth = 5;
+      ctx.beginPath();
+      ctx.moveTo(-14, 18); ctx.lineTo(-26, 38);
+      ctx.moveTo(14, 18); ctx.lineTo(26, 38);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    function drawRock(x, y, w=62, h=26) {
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.beginPath();
+      ctx.ellipse(0, 0, w/2, h/2, 0, 0, Math.PI*2);
+      ctx.fillStyle = "#7e8c8d";
+      ctx.globalAlpha = 0.87;
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      ctx.strokeStyle = "#555";
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    function drawScene() {
+      // Sky
+      ctx.clearRect(0,0,canvas.width,canvas.height);
+      // Clouds
+      for(let i=0;i<3;i++){
+        ctx.save();
+        ctx.globalAlpha = 0.18;
+        ctx.beginPath();
+        ctx.ellipse(70+160*i, 60+20*(i%2), 60, 20, 0, 0, Math.PI*2);
+        ctx.ellipse(110+160*i, 60+20*(i%2), 28, 14, 0, 0, Math.PI*2);
+        ctx.fillStyle = "#fff";
+        ctx.fill();
+        ctx.restore();
+      }
+      // Rocks
+      for(let r of rocks) drawRock(r.x, r.y);
+      // Girl
+      if(girl) drawGirl(girl.x, girl.y, jumpAnim!=null);
+    }
+
+    function resetGame() {
+      state = "playing";
+      gameOverReason = "";
+      hearts = 3;
+      girl = {x: 80, y: 390, rock: 0};
+      rocks = [
+        {x: 80, y: 420},
+        {x: 230, y: 330},
+        {x: 330, y: 250},
+        {x: 170, y: 170},
+        {x: 60, y: 100},
+        {x: 280, y: 70}
+      ];
+      jumpAnim = null;
+      jumpTo = 1;
+      messageDiv.style.opacity = 0;
+      restartBtn.style.display = "none";
+      updateLives();
+      drawScene();
+      // For each win, randomize one forced fall for next round except first win
+      winCount = winCount || 0;
+      forceFallIndexes = [];
+      if(winCount > 0) {
+        // Make her fall at a random rock, but not first or last
+        const idx = Math.floor(Math.random() * (rocks.length-2)) + 1;
+        forceFallIndexes = [idx];
+      }
+    }
+
+    function updateLives() {
+      livesDiv.innerHTML = "❤️".repeat(hearts) + "♡".repeat(3-hearts);
+    }
+
+    // Force a fall at a specific jump index (for added challenge)
+    function shouldForceFall(index) {
+      return forceFallIndexes.includes(index);
+    }
+
+    function jump() {
+      if (state !== "playing" || jumpAnim) return;
+      if (jumpTo >= rocks.length) { win(); return; }
+      const from = {...girl};
+      const to = {...rocks[jumpTo]};
+      const peak = Math.min(from.y, to.y) - 60;
+      let t = 0;
+      jumpAnim = setInterval(()=>{
+        t += 0.045;
+        if (t >= 1) {
+          clearInterval(jumpAnim);
+          jumpAnim = null;
+          girl.x = to.x; girl.y = to.y-30; girl.rock = jumpTo;
+          // If forced fall, or chance to fall
+          if (shouldForceFall(jumpTo) || (Math.random()<0.12 && hearts > 1)) {
+            loseLife(true);
+          } else {
+            jumpTo++;
+            drawScene();
+          }
+          return;
+        }
+        // Parabolic jump
+        girl.x = from.x + (to.x - from.x) * t;
+        girl.y = from.y + (peak - from.y) * 4 * t * (1 - t) + (to.y - from.y) * t;
+        drawScene();
+      }, 16);
+    }
+
+    function loseLife(force=false) {
+      hearts--;
+      updateLives();
+      showMsg(fallMsg, 1750);
+      if (hearts === 0) {
+        setTimeout(gameOver, 1300);
+      } else {
+        setTimeout(()=> {
+          girl.x = rocks[girl.rock].x;
+          girl.y = rocks[girl.rock].y-30;
+          drawScene();
+        }, 1000);
+        if(force) {
+          // Move forced fall index to another, avoid always same spot
+          if(forceFallIndexes.length > 0) {
+            let next = Math.floor(Math.random() * (rocks.length-2)) + 1;
+            forceFallIndexes = [next];
+          }
+        }
+      }
+    }
+
+    function win() {
+      state = "win";
+      showMsg(winMsg, 2100);
+      winCount++;
+      setTimeout(()=>{restartBtn.style.display="block";}, 1800);
+    }
+
+    function gameOver() {
+      state = "lose";
+      showMsg("Game Over", 1600);
+      setTimeout(()=>{restartBtn.style.display="block";}, 1200);
+    }
+
+    function showMsg(msg, duration=1800) {
+      messageDiv.textContent = msg;
+      messageDiv.style.opacity = 1;
+      setTimeout(()=>{messageDiv.style.opacity=0;}, duration);
+    }
+
+    canvas.addEventListener('click', jump);
+    window.addEventListener('keydown', e=>{ if(e.code==="Space") jump(); });
+
+    function restartGame() {
+      resetGame();
+    }
+
+    // Initial setup
+    resetGame();
+
+  </script>
+</body>
+</html>
